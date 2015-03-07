@@ -152,7 +152,7 @@ function PongServer() {
             p2.paddle.moveOneStep();
 
             // Move ball
-            ball.updatePosition();
+            ball.updatePosition(true);
             ball.checkForBounce(p1.paddle, p2.paddle);
 
             // Update on player side
@@ -202,6 +202,7 @@ function PongServer() {
                 setTimeout(unicast, p1.getDelay(), sockets[1], states);
                 setTimeout(unicast, p2.getDelay(), sockets[2], states);
                 ball.outOfBound = false;
+                ball.reset();
             }
         } else {
             // Reset

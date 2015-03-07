@@ -8,23 +8,23 @@
  *  - distance travelled now depends on time (previously,
  *    each step is constant).
  *
- * Usage:
+ * Usage: 
  *   require('Ball.js') in both server and client.
  */
 
 // enforce strict/clean programming
-"use strict";
+"use strict"; 
 
 function Ball() {
     // Private variables
     var moving; // boolean of whether ball is moving
-    var lastUpdate; // timestamp of lastUpdate
+    var lastUpdate = -1; // timestamp of lastUpdate
 
     // Public variables
-    this.x;     // x-coordinate of ball's position
+    this.x;     // x-coordinate of ball's position 
     this.y;     // y-coordinate of ball's position
     this.vx;    // x-component of ball's velocity
-    this.vy;    // y-component of ball's
+    this.vy;    // y-component of ball's 
     this.velocityUpdated; // has the ball bounced?
     this.outOfBound; // has the ball gone out of bound?
 
@@ -41,15 +41,20 @@ function Ball() {
     /*
      * private method: updateVelocity(px)
      *
-     * Called from checkForBounce whenever the ball hits the
+     * Called from checkForBounce whenever the ball hits the 
      * or paddle.  px is the x-position of the paddle.
-     *
+     * 
      * The velocity changes depending on which region the ball
      * hits the paddle.
+     *
+     * Return: whether the ball hit the paddle
      */
     var updateVelocity = function(px) {
+        var hitPaddle = true;
+
         // Change direction (vx) depending on collision point between ball and paddle
-        that.velocityUpdated = true;
+        that.velocityUpdated = true;   
+        
         if (that.x >= px - Paddle.R1 && that.x <= px + Paddle.R1) {
             that.vy = -that.vy;
         } else if (that.x >= px - Paddle.R2 && that.x <= px + Paddle.R2) {
@@ -64,7 +69,10 @@ function Ball() {
         } else {
             // ball didn't collide with paddle
             that.velocityUpdated = false;
+            hitPaddle = false;
         }
+
+        return hitPaddle;
     }
 
     /*
@@ -81,7 +89,7 @@ function Ball() {
     /*
      * priviledged method: startMoving()
      *
-     * Change the ball velocity to non-zero and
+     * Change the ball velocity to non-zero and 
      * set the moving flag to true.
      */
     this.startMoving = function(){
@@ -91,7 +99,7 @@ function Ball() {
         moving = true;
         lastUpdate = getTimestamp();
     }
-
+      
     /*
      * priviledged method: isMoving()
      *
@@ -104,14 +112,16 @@ function Ball() {
     /*
      * priviledged method: updatePosition()
      *
-     * Called to calculate the new position of the ball.
+     * Called to calculate the new position of the ball.  
      */
-    this.updatePosition = function() {
+    this.updatePosition = function(enabled) {
         var now = getTimestamp(); // get the current time in millisecond resolution
 
-        // Update position
-        that.x += that.vx*(now - lastUpdate)*Pong.FRAME_RATE/1000;
-        that.y += that.vy*(now - lastUpdate)*Pong.FRAME_RATE/1000;
+        // Update position only if ball update is enabled
+        if (enabled && lastUpdate > 0) {
+            that.x += that.vx * (now - lastUpdate) * Pong.FRAME_RATE/1000;
+            that.y += that.vy * (now - lastUpdate) * Pong.FRAME_RATE/1000;
+        }
 
         lastUpdate = now;
     }
@@ -138,35 +148,41 @@ function Ball() {
     /*
      * priviledged method: checkForBounce(topPaddle, bottomPaddle)
      *
-     * Called to calculate the new position of the ball.  Update
+     * Called to calculate the new position of the ball.  Update 
      * velocity if the ball hits the paddle.
+     *
+     * Return whether the ball need update from server before continue moving
      */
     this.checkForBounce = function(topPaddle, bottomPaddle) {
+        var waitForServer = false;
 
         // Check for bouncing
-        if ((that.isMovingLeft() && that.x <= Ball.WIDTH/2) ||
+        if ((that.isMovingLeft() && that.x <= Ball.WIDTH/2) || 
             (that.isMovingRight() && that.x >= Pong.WIDTH - Ball.WIDTH/2)) {
             // Bounds off horizontally
             that.vx = -that.vx;
-        } else if ((that.isMovingDown() && that.y + Ball.HEIGHT/2 > Pong.HEIGHT) ||
+        } else if ((that.isMovingDown() && that.y + Ball.HEIGHT/2 > Pong.HEIGHT) || 
                 (that.isMovingUp() && that.y - Ball.HEIGHT/2 < 0)) {
-            // Goes out of bound from the top/bottom! Lose point and restart.
-            that.reset();
+            // Goes out of bound! Lose point and restart.
+            // that.reset();
             that.outOfBound = true;
+            waitForServer = true;               // Wait for server to decide whether it is actually dead
         } else if (that.isMovingUp() && that.y - Ball.HEIGHT/2 < Paddle.HEIGHT) {
             // Chance for ball to collide with top paddle.
-            updateVelocity(topPaddle.x);
+            waitForServer = updateVelocity(topPaddle.x);
         } else if (that.isMovingDown() && that.y + Ball.HEIGHT/2 > Pong.HEIGHT - Paddle.HEIGHT) {
             // Chance for ball to collide with bottom paddle.
-            updateVelocity(bottomPaddle.x);
+            waitForServer = updateVelocity(bottomPaddle.x);
         }
+
+        return waitForServer;
     }
 
-    // the following snippet defines an appropriate high resolution
+    // the following snippet defines an appropriate high resolution 
     // getTimestamp function depends on platform.
     if (typeof window === "undefined") {
         console.log("using process.hrtime()");
-        var getTimestamp = function() { var t = process.hrtime(); return t[0]*1e3 + t[1]*1.0/1e6}
+        var getTimestamp = function() { var t = process.hrtime(); return t[0]*1e3 + t[1]*1.0/1e6} 
     } else if (window.performance !== undefined) {
         if (window.performance.now) {
             console.log("using window.performence.now()");

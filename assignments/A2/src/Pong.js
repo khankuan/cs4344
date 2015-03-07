@@ -6,8 +6,12 @@ var Pong = {
 	WIDTH : 400,				// width of Pong game window
 	PORT : 4344,				// port of Pong game
 	FRAME_RATE : 25,			// frame rate of Pong game
-	SERVER_NAME : "localhost"	// server name of Pong game
+	SERVER_NAME : "localhost",	// server name of Pong game
 	//SERVER_NAME : "172.28.179.28"	// server name of Pong game
+
+
+	// Program constants
+	LOCAL_LAG : 180        // the client local lag in ms
 }
 
 // For node.js require

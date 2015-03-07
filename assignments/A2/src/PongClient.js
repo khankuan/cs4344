@@ -1,39 +1,36 @@
 /*
- * PongBot.js
- * A skeleton bot for two-player Pong game.
+ * PongClient.js
+ * A skeleton client for two-player Pong game.
  * Assignment 2 for CS4344, AY2013/14.
  * Modified from Davin Choo's AY2012/13 version.
  *
  * Changes from AY2012/13:
  *  - migrate from socket.io to sockjs
  *
- * Usage:
+ * Usage: 
  *    Include in HTML body onload to run on a web page.
- *    <body onload="loadScript('', 'PongBot.js')">
- *
- * Everything here is the same as PongClient, except that
- * there is no user input and the paddle movement is automatic
- * upon receiving ball position updates.
+ *    <body onload="loadScript('', 'PongClient.js')">
  */
 
 // enforce strict/clean programming
-"use strict";
+"use strict"; 
 
-function PongBot() {
+function PongClient() {
     // private variables
-    var socket;         // socket used to connect to server
-    var playArea;       // HTML5 canvas game window
-    var ball;           // ball object in game
-    var myPaddle;       // player's paddle in game
+    var socket;         // socket used to connect to server 
+    var playArea;       // HTML5 canvas game window 
+    var ball;           // ball object in game 
+    var myPaddle;       // player's paddle in game 
     var opponentPaddle; // opponent paddle in game
-    var delay;          // delay simulated on current client
+    var delay;          // delay simulated on current client 
+    var prevVx = 0;     // previous velocity (for accelorometer)
     var lastUpdatePaddleAt = 0; // timestamp of last recv update
     var lastUpdateVelocityAt = 0; // timestamp of last recv update
 
     /*
      * private method: showMessage(location, msg)
      *
-     * Display a text message on the web page.  The
+     * Display a text message on the web page.  The 
      * parameter location indicates the class ID of
      * the HTML element, and msg indicates the message.
      *
@@ -41,17 +38,17 @@ function PongBot() {
      * being shown.
      */
     var showMessage = function(location, msg) {
-        document.getElementById(location).innerHTML = msg;
+        document.getElementById(location).innerHTML = msg; 
     }
 
     /*
      * private method: appendMessage(location, msg)
      *
-     * Display a text message on the web page.  The
+     * Display a text message on the web page.  The 
      * parameter location indicates the class ID of
      * the HTML element, and msg indicates the message.
      *
-     * The new message is displayed ON TOP of any
+     * The new message is displayed ON TOP of any 
      * existing messages.  A timestamp prefix is added
      * to the message displayed.
      */
@@ -87,25 +84,28 @@ function PongBot() {
             socket.onmessage = function (e) {
                 var message = JSON.parse(e.data);
                 switch (message.type) {
-                case "message":
+                case "message": 
                     appendMessage("serverMsg", message.content);
                     break;
-                case "update":
+                case "update": 
                     var t = message.timestamp;
                     if (t < lastUpdatePaddleAt)
                         break;
                     lastUpdatePaddleAt = t;
-                    //ball.x = message.ballX;
-                    //ball.y = message.ballY;
-                    //myPaddle.x = message.myPaddleX;
+                    // ball.x = message.ballX;
+                    // ball.y = message.ballY;
+                    // Stop updating own's paddle based on server's state
+                    // since we are short-circuting the paddle movement.
+                    // myPaddle.x = message.myPaddleX;
                     myPaddle.y = message.myPaddleY;
                     opponentPaddle.x = message.opponentPaddleX;
                     opponentPaddle.y = message.opponentPaddleY;
                     break;
-                case "updateVelocity":
+                case "updateVelocity": 
                     var t = message.timestamp;
-                    if (t < lastUpdateVelocityAt)
+                    if (t < lastUpdateVelocityAt) {
                         break;
+                    }
                     lastUpdateVelocityAt = t;
                     ball.vx = message.ballVX;
                     ball.vy = message.ballVY;
@@ -113,14 +113,26 @@ function PongBot() {
                     // in calculation to propagate.
                     ball.x = message.ballX;
                     ball.y = message.ballY;
+
+                    ball.moving = true;
+
+                    // Local Perception Filter
+                    var isBallComing =  (myPaddle.y < Paddle.HEIGHT && ball.vy < 0) // my paddle is up and the ball moving upward
+                                        || (myPaddle.y > Paddle.HEIGHT && ball.vy > 0); // my paddle is at bottom and the ball moving downward
+                    // Adjust ball velocity based on estimated delay
+                    var travellingDuration = Math.abs((Pong.HEIGHT - 2*Paddle.HEIGHT) / ball.vy);
+                    var adaptedTime = isBallComing ? travellingDuration - 2*delay*Pong.FRAME_RATE/1000 : travellingDuration;
+                    var adaptedVY = ball.vy / Math.abs(ball.vy) * Pong.HEIGHT / adaptedTime;
+                    ball.vy = adaptedVY;            // Overwrite original vy value
+                    ball.vx = message.ballVX * adaptedVY / message.ballVY;
                     break;
-                case "outOfBound":
+                case "outOfBound": 
                     ball.reset();
                     myPaddle.reset();
                     opponentPaddle.reset();
                     break;
-                default:
-                    appendMessage("serverMsg", "unhandled meesage type " + message.type);
+                default: 
+                    appendMessage("serverMsg", "unhandled meesage type " + msg.type);
                 }
             }
         } catch (e) {
@@ -142,9 +154,110 @@ function PongBot() {
         playArea.height = Pong.HEIGHT;
         playArea.width = Pong.WIDTH;
 
+        // Add event handlers
+        playArea.addEventListener("mousemove", function(e) {
+            onMouseMove(e);
+            }, false);
+        playArea.addEventListener("touchmove", function(e) {
+            onTouchMove(e);
+            }, false);
+        playArea.addEventListener("click", function(e) {
+            onMouseClick(e);
+            }, false);
+        playArea.addEventListener("touchend", function(e) {
+            onTouchEnd(e);
+            }, false);
         document.addEventListener("keydown", function(e) {
             onKeyPress(e);
             }, false);
+        window.addEventListener("devicemotion", function(e) {
+            onDeviceMotion(e);
+            }, false);
+        window.ondevicemotion = function(e) {
+            onDeviceMotion(e);
+            }
+    }
+
+    /*
+     * private method: onMouseMove
+     *
+     * When we detect a mouse movement, translate the mouse
+     * coordinate to play area coordinate and send the new
+     * mouse x-coordinate to the server.
+     */
+    var onMouseMove = function(e) {
+        var canvasMinX = playArea.offsetLeft;
+        var canvasMaxX = canvasMinX + playArea.width;
+        var canvasMinY = playArea.offsetTop;
+        var canvasMaxY = canvasMinX + playArea.height;
+        var newMouseX = e.pageX - canvasMinX;
+        var newMouseY = e.pageY - canvasMinY;
+
+        // Short circuiting the paddle movement, with a 
+        // local lag of 100ms. 
+        var estimatedLag = Math.min (Pong.LOCAL_LAG, delay);
+        setTimeout(function() {myPaddle.x = newMouseX;}, estimatedLag);
+ 
+        // Send event to server
+        sendToServer({type:"move", x: newMouseX});
+    }
+
+    /*
+     * private method: onMouseClick
+     *
+     * Starts the game if the game has not started.
+     * (we check if a game has started by checking if
+     * the ball is moving).
+     */
+    var onMouseClick = function(e) {
+        if (!ball.isMoving()) {
+            //Send event to server
+            sendToServer({type:"start"});
+        }
+    }
+
+    /*
+     * private method: onTouchEnd
+     *
+     * Touch version of "mouse click" callback above.
+     */
+    var onTouchEnd = function(e) {
+        if (!ball.isMoving()) {
+            sendToServer({type:"start"});
+        }
+    }
+
+    /*
+     * private method: onTouchMove
+     *
+     * Touch version of "mouse move" callback above.
+     */
+    var onTouchMove = function(e) {
+        var t = e.touches[0];
+        var canvasMinX = playArea.offsetLeft;
+        var canvasMaxX = canvasMinX + playArea.width;
+        var canvasMinY = playArea.offsetTop;
+        var canvasMaxY = canvasMinX + playArea.height;
+        var newMouseX = t.pageX - canvasMinX;
+        var newMouseY = t.pageY - canvasMinY;
+
+        // Send event to server
+        sendToServer({type:"move", x:newMouseX});
+    }
+    /*
+     * private method: onDeviceMotion
+     *
+     * Get the device acceleration and use that to change the 
+     * velocity of the paddle.
+     */
+    var onDeviceMotion = function(e) {
+        var vx = e.accelerationIncludingGravity.x;
+        if (vx - prevVx > 0.1 || prevVx - vx > 0.1) {
+            prevVx = vx;
+            // Send event to server if the accelerometer reading 
+            // changes significantly.
+            sendToServer({type: "accelerate", vx: vx});
+        }
     }
 
     var onKeyPress = function(e) {
@@ -173,21 +286,26 @@ function PongBot() {
                 break;
             }
         }
-        e.preventDefault();
     }
-
+    
     var gameLoop = function() {
-        ball.updatePosition();
+        ball.updatePosition(ball.moving);
+
+        var waitForServer = false;
         if (myPaddle.y < Paddle.HEIGHT) {
             // my paddle is on top
-            ball.checkForBounce(myPaddle, opponentPaddle);
+            waitForServer = ball.checkForBounce(myPaddle, opponentPaddle);
         } else {
             // my paddle is at the bottom
-            ball.checkForBounce(opponentPaddle, myPaddle);
+            waitForServer = ball.checkForBounce(opponentPaddle, myPaddle);
         }
-        // BOT: automatically moves paddle
-        sendToServer({type:"move",x:ball.x});
-        myPaddle.x = ball.x;
+
+        // Stop the ball and wait for server
+        if (ball.moving && waitForServer) {
+            AudioManager.playBounceSound();
+            ball.moving = false;
+        }
+
         render();
     }
 
@@ -215,11 +333,12 @@ function PongBot() {
         context.closePath();
         context.fill();
 
+        // Draw both paddles
         context.fillStyle = "#ffff00";
-        context.fillRect(myPaddle.x - Paddle.WIDTH/2,
+        context.fillRect(myPaddle.x - Paddle.WIDTH/2, 
             myPaddle.y - Paddle.HEIGHT/2,
             Paddle.WIDTH, Paddle.HEIGHT);
-        context.fillRect(opponentPaddle.x - Paddle.WIDTH/2,
+        context.fillRect(opponentPaddle.x - Paddle.WIDTH/2, 
             opponentPaddle.y - Paddle.HEIGHT/2,
             Paddle.WIDTH, Paddle.HEIGHT);
     }
@@ -228,27 +347,36 @@ function PongBot() {
      * priviledge method: start
      *
      * Create the ball and paddles objects, connects to
-     * server, draws the GUI, and starts the rendering
+     * server, draws the GUI, and starts the rendering 
      * loop.
      */
     this.start = function() {
         // Initialize game objects
         ball = new Ball();
+
+        // The following lines always put the player's paddle
+        // at the bottom; opponent's paddle at the top.
+        // But this could get overridden by the server later
+        // (by the y coordinate of the paddle).
         myPaddle = new Paddle(Pong.HEIGHT);
         opponentPaddle = new Paddle(Paddle.HEIGHT);
+
+        // Start off with no delay to the server
         delay = 0;
 
         // Initialize network and GUI
         initNetwork();
         initGUI();
 
-        // Start drawing
+        // Start drawing 
         setInterval(function() {gameLoop();}, 1000/Pong.FRAME_RATE);
     }
 }
 
+// This will auto run after this script is loaded
+
 // Run Client. Give leeway of 0.5 second for libraries to load
-var client = new PongBot();
+var client = new PongClient();
 setTimeout(function() {client.start();}, 500);
 
 // vim:ts=4:sw=4:expandtab
